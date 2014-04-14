@@ -1,0 +1,16 @@
+{
+   "name": "Estimation Board",
+   "className": "Rally.apps.kanban.KanbanApp",
+   "server": "https://rally1.rallydev.com",
+   "sdk": "x",
+   "javascript": [
+      "ColumnCardFieldPicker.js",
+      "ColumnSettingsField.js",
+      "Settings.js",
+      "Column.js",
+      "EstimationApp.js"
+   ],
+   "css": [
+      "EstimationApp.css"
+   ]
+}

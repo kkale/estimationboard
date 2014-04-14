@@ -1,0 +1,951 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Estimation Board</title>
+
+    <script type="text/javascript" src="/apps/x/sdk.js"></script>
+
+    <script type="text/javascript">
+        Rally.onReady(function () {
+                (function() {
+    var Ext = window.Ext4 || window.Ext;
+
+    /**
+     * A picker which allows selecting one or more fields and a configurable right side action on bound list.
+     */
+    Ext.define('Rally.apps.kanban.ColumnCardFieldPicker', {
+        extend: 'Rally.ui.picker.FieldPicker',
+        alias: 'widget.kanbancolumncardfieldpicker',
+        margin: 0,
+
+        config: {
+            /**
+             * @cfg {String}
+             * Initial text shown on right side of bound list
+             */
+            rightInitialText: 'Apply to All',
+
+            /**
+             * @cfg {String}
+             * Text shown on right side of bound list after click
+             */
+            rightUpdateText: 'Remove from All',
+
+            /**
+             * @cfg {String}
+             * Class for right side of bound list
+             */
+            rightCls: 'rui-picker-right-action hyperlink'
+
+        },
+
+
+        initComponent: function() {
+            this.addEvents(
+                /**
+                 * @event rightactionclick
+                 * Fires when a right side text was clicked in the picker
+                 * @param {Rally.ui.picker.MultiObjectPicker} picker This picker
+                 * @param {Object} value The newly clicked value
+                 * @param {Object[]} values The currently selected values
+                 * @param {Ext.Element} The element clicked
+                 */
+                'rightactionclick'
+            );
+            this.applyToAllFields = [];
+            this.callParent(arguments);
+        },
+
+        onListItemDeselect: function(record, event, itemEl) {
+            var rightActionEl = this._getRightActionEl(record);
+
+            if (rightActionEl && event.within(rightActionEl)) {
+                var initialTextClicked = rightActionEl.getHTML() === this.rightInitialText;
+                this.fireEvent('rightactionclick', this, record, this.getValue(), initialTextClicked);
+
+                if (initialTextClicked) {
+                    this.applyToAllFields.push(record.get(this.selectionKey));
+                    this._selectRowCheckbox(record.get(this.recordKey));
+                    rightActionEl.update(this.rightUpdateText);
+                    return false;
+                } else {
+                    Ext.Array.remove(this.applyToAllFields, record.get(this.selectionKey));
+                    rightActionEl.update(this.rightInitialText);
+                }
+            } else {
+                Ext.Array.remove(this.applyToAllFields, record.get(this.selectionKey));
+            }
+            this.callParent(arguments);
+        },
+
+        getRightListHtml: function(recordData) {
+            var tpl = '';
+            if (recordData.groupSelected === 'Selected Fields' &&
+                !Ext.Array.contains(this.alwaysSelectedValues, recordData[this.selectionKey])) {
+                var text = Ext.Array.contains(this.applyToAllFields, recordData[this.selectionKey]) ? this.rightUpdateText: this.rightInitialText;
+                tpl = '<div class="' + this.rightCls + '">' + text + '</div>';
+            }
+            return tpl;
+        },
+
+        _getRightActionEl: function(record) {
+            var rightSelector = Ext.String.splitWords(this.rightCls).join('.');
+            return this.list.getEl().down('.rui-multi-object-picker-option-id-' + record.get(this.recordKey) + ' .' + rightSelector);
+        }
+
+    });
+})();
+                (function() {
+    var Ext = window.Ext4 || window.Ext;
+
+    /**
+     * Allows configuration of wip and schedule state mapping for kanban columns
+     *
+     *      @example
+     *      Ext.create('Ext.Container', {
+     *          items: [{
+     *              xtype: 'kanbancolumnsettingsfield',
+     *              value: {}
+     *          }],
+     *          renderTo: Ext.getBody().dom
+     *      });
+     *
+     */
+    Ext.define('Rally.apps.kanban.ColumnSettingsField', {
+        extend: 'Ext.form.field.Base',
+        alias: 'widget.kanbancolumnsettingsfield',
+        plugins: ['rallyfieldvalidationui'],
+        requires: [
+            'Rally.ui.combobox.ComboBox',
+            'Rally.ui.TextField',
+            'Rally.ui.combobox.FieldValueComboBox',
+            'Rally.ui.plugin.FieldValidationUi',
+            'Rally.apps.kanban.ColumnCardFieldPicker'
+        ],
+
+        fieldSubTpl: '<div id="{id}" class="settings-grid"></div>',
+
+        width: 600,
+        cls: 'column-settings',
+
+        config: {
+            /**
+             * @cfg {Object}
+             *
+             * The column settings value for this field
+             */
+            value: undefined,
+
+            defaultCardFields: ''
+        },
+
+        onDestroy: function() {
+            if (this._grid) {
+                this._grid.destroy();
+                delete this._grid;
+            }
+            this.callParent(arguments);
+        },
+
+        onRender: function() {
+            this.callParent(arguments);
+
+            this._store = Ext.create('Ext.data.Store', {
+                fields: ['column', 'shown', 'sizebucket',  'cardFields'],
+                data: []
+            });
+
+            this._grid = Ext.create('Rally.ui.grid.Grid', {
+                autoWidth: true,
+                renderTo: this.inputEl,
+                columnCfgs: this._getColumnCfgs(),
+                showPagingToolbar: false,
+                showRowActionsColumn: false,
+                enableRanking: false,
+                store: this._store,
+                editingConfig: {
+                    publishMessages: false
+                }
+            });
+        },
+
+        _getColumnCfgs: function() {
+            var columns = [
+                {
+                    text: 'Column',
+                    dataIndex: 'column',
+                    emptyCellText: 'None',
+                    flex: 2
+                },
+                {
+                    text: 'Show',
+                    dataIndex: 'shown',
+                    flex: 1,
+                    renderer: function (value) {
+                        return value === true ? 'Yes' : 'No';
+                    },
+                    editor: {
+                        xtype: 'rallycombobox',
+                        displayField: 'name',
+                        valueField: 'value',
+                        editable: false,
+                        storeType: 'Ext.data.Store',
+                        storeConfig: {
+                            remoteFilter: false,
+                            fields: ['name', 'value'],
+                            data: [
+                                {'name': 'Yes', 'value': true},
+                                {'name': 'No', 'value': false}
+                            ]
+                        }
+                    }
+                },
+                {
+                    text: 'Size',
+                    dataIndex: 'sizebucket',
+                    flex: 1,
+                    emptyCellText: '&#8734;',
+                    editor: {
+                        xtype: 'rallytextfield',
+                        maskRe: /[0-9]/,
+                        validator: function (value) {
+                            return (value === '' || (value >= 0 && value <= 9999)) || 'Size must be >= 0 and < 9999.';
+                        },
+                        rawToValue: function (value) {
+                            return value === '' ? value : parseInt(value, 10);
+                        }
+                    }
+                }
+            ];
+
+            if (this.shouldShowColumnLevelFieldPicker) {
+                columns.push({
+                    text: 'Fields',
+                    dataIndex: 'cardFields',
+                    width: 300,
+                    tdCls: Rally.util.Test.toBrowserTestCssClass('cardfields', ''),
+                    renderer: this._getRendererForCardFields,
+                    scope: this,
+                    editor: {
+                        xtype: 'kanbancolumncardfieldpicker',
+                        cls: 'card-fields',
+                        margin: 0,
+                        modelTypes: ['UserStory', 'Defect'],
+                        autoExpand: true,
+                        alwaysExpanded: false,
+                        hideTrigger: true,
+                        fieldBlackList: ['DefectStatus', 'TaskStatus', 'DisplayColor'],
+                        alwaysSelectedValues: ['FormattedID', 'Name'],
+                        storeConfig: {
+                            autoLoad: false
+                        },
+                        listeners: {
+                            selectionchange: function (picker) {
+                                picker.validate();
+                            },
+                            rightactionclick: this._updateColumnCardFieldSettings,
+                            scope: this
+                        }
+                    }
+                });
+            }
+            return columns;
+        },
+
+        /**
+         * When a form asks for the data this field represents,
+         * give it the name of this field and the ref of the selected project (or an empty string).
+         * Used when persisting the value of this field.
+         * @return {Object}
+         */
+        getSubmitData: function() {
+            var data = {};
+            data[this.name] = Ext.JSON.encode(this._buildSettingValue());
+            return data;
+        },
+
+        _getRendererForCardFields: function(fields) {
+            var valWithoutPrefixes = [];
+            Ext.Array.each(this._getCardFields(fields), function(field) {
+                valWithoutPrefixes.push(field.replace(/^c_/, ''));
+            });
+            return valWithoutPrefixes.join(', ');
+        },
+
+        _getCardFields: function(fields) {
+            if (Ext.isString(fields) && fields) {
+                return fields.split(',');
+            }
+            var val = ['FormattedID','Name'];
+            Ext.Array.each(fields, function (currentItem) {
+                if (currentItem && currentItem.data && !Ext.Array.contains(val, currentItem.data.name)) {
+                    val.push(currentItem.data.name);
+                }
+            });
+            return val;
+        },
+
+        _updateColumnCardFieldSettings: function(picker, selectedRecord, value, initialText) {
+            this._store.each(function(record) {
+                if (record.get('shown')) {
+                    var cardFields = this._getCardFields(record.get('cardFields'));
+
+                    if (initialText) {
+                        if (!Ext.Array.contains(cardFields, selectedRecord.get('name'))) {
+                            cardFields.push(selectedRecord.get('name'));
+                        }
+                    } else {
+                        Ext.Array.remove(cardFields, selectedRecord.get('name'));
+                    }
+                    record.set('cardFields', cardFields.join(','));
+                }
+            }, this);
+
+            this._store.loadRawData(this._store.getRange());
+        },
+
+        _buildSettingValue: function() {
+            var columns = {};
+            this._store.each(function(record) {
+                if (record.get('shown')) {
+                    columns[record.get('column')] = {
+                        sizebucket: record.get('sizebucket'),
+                        scheduleStateMapping: record.get('scheduleStateMapping')
+                    };
+                    if (this.shouldShowColumnLevelFieldPicker) {
+                        var cardFields = this._getCardFields(record.get('cardFields'));
+                        columns[record.get('column')].cardFields = cardFields.join(',');
+                    }
+                }
+            }, this);
+            return columns;
+        },
+
+        getErrors: function() {
+            var errors = [];
+            if (this._storeLoaded && !Ext.Object.getSize(this._buildSettingValue())) {
+                errors.push('At least one column must be shown.');
+            }
+            return errors;
+        },
+
+        setValue: function(value) {
+            this.callParent(arguments);
+            this._value = value;
+        },
+
+        _getColumnValue: function(columnName) {
+            var value = this._value;
+            return value && Ext.JSON.decode(value)[columnName];
+        },
+
+        refreshWithNewField: function(field) {
+            delete this._storeLoaded;
+            field.getAllowedValueStore().load({
+                callback: function(records, operation, success) {
+                    var data = Ext.Array.map(records, this._recordToGridRow, this);
+                    this._store.loadRawData(data);
+                    this.fireEvent('ready');
+                    this._storeLoaded = true;
+                },
+                scope: this
+            });
+        },
+
+        _recordToGridRow: function(allowedValue) {
+            var columnName = allowedValue.get('StringValue');
+            var pref = this._store.getCount() === 0 ? this._getColumnValue(columnName) : null;
+
+            var column = {
+                column: columnName,
+                shown: false,
+                sizebucket: '',
+                scheduleStateMapping: '',
+                cardFields: this.defaultCardFields
+            };
+
+            if (pref) {
+            	console.log("pref: ", pref);
+                Ext.apply(column, {
+                    shown: true,
+                    sizebucket: pref.sizebucket,
+                    scheduleStateMapping: true
+                });
+
+                if (pref.cardFields) {
+                    Ext.apply(column, {
+                        cardFields: pref.cardFields
+                    });
+                }
+            }
+
+            return column;
+
+        }
+    });
+})();
+                (function() {
+    var Ext = window.Ext4 || window.Ext;
+
+    /**
+     *
+     */
+    Ext.define('Rally.apps.kanban.Settings', {
+        singleton: true,
+        requires: [
+            'Rally.apps.kanban.ColumnSettingsField',
+            'Rally.ui.combobox.FieldComboBox',
+            'Rally.ui.picker.FieldPicker',
+            'Rally.ui.CheckboxField',
+            'Rally.ui.plugin.FieldValidationUi'
+        ],
+
+        getFields: function(config) {
+            var alwaysSelectedValues = ['FormattedID', 'Name'];
+            var items = [
+                {
+                    name: 'groupByField',
+                    xtype: 'rallyfieldcombobox',
+                    model: Ext.identityFn('UserStory'),
+                    margin: '10px 0 0 0',
+                    fieldLabel: 'Size By',
+                    listeners: {
+                        select: function(combo) {
+                            this.fireEvent('fieldselected', combo.getRecord().get('fieldDefinition'));
+                        },
+                        ready: function(combo) {
+                            combo.store.filterBy(function(record) {
+                                var attr = record.get('fieldDefinition').attributeDefinition;
+                                return attr && !attr.ReadOnly && attr.Constrained && attr.AttributeType !== 'OBJECT' && attr.AttributeType !== 'COLLECTION';
+                            });
+                            if (combo.getRecord()) {
+                                this.fireEvent('fieldselected', combo.getRecord().get('fieldDefinition'));
+                            }
+                        }
+                    },
+                    bubbleEvents: ['fieldselected', 'fieldready']
+                },
+                {
+                    name: 'columns',
+                    readyEvent: 'ready',
+                    fieldLabel: '',
+                    margin: '5px 0 0 80px',
+                    xtype: 'kanbancolumnsettingsfield',
+                    shouldShowColumnLevelFieldPicker: false,
+                    defaultCardFields: config.defaultCardFields,
+                    handlesEvents: {
+                        fieldselected: function(field) {
+                            this.refreshWithNewField(field);
+                        }
+                    },
+                    listeners: {
+                        ready: function() {
+                            this.fireEvent('columnsettingsready');
+                        }
+                    },
+                    bubbleEvents: 'columnsettingsready'
+                }
+            ];
+
+            if (!config.shouldShowColumnLevelFieldPicker) {
+                var fieldBlackList = ['DisplayColor'];
+                items.push({
+                    name: 'cardFields',
+                    fieldLabel: 'Card Fields',
+                    xtype: 'rallyfieldpicker',
+                    modelTypes: ['userstory', 'defect'],
+                    fieldBlackList: fieldBlackList,
+                    alwaysSelectedValues: alwaysSelectedValues,
+                    listeners: {
+                        selectionchange: function(picker) {
+                            picker.validate();
+                        }
+                    },
+                    handlesEvents: {
+                        columnsettingsready: function() {
+                            if (this.picker) {
+                                this.alignPicker();
+                            }
+                        }
+                    }
+                });
+            }
+            
+            items.push(
+                {
+                    name: 'pageSize',
+                    xtype: 'rallynumberfield',
+                    plugins: ['rallyfieldvalidationui'],
+                    fieldLabel: 'Page Size',
+                    allowDecimals: false,
+                    minValue: 1,
+                    maxValue: 100,
+                    allowBlank: false,
+                    validateOnChange: false,
+                    validateOnBlur: false
+                },
+                {
+                    type: 'query'
+                }
+            );
+
+            return items;
+        }
+    });
+})();
+                (function() {
+    var Ext = window.Ext4 || window.Ext;
+
+    Ext.define('Rally.apps.kanban.Column', {
+        extend: 'Rally.ui.cardboard.Column',
+        alias: 'widget.kanbancolumn',
+
+        getStoreFilter: function(model) {
+            var filters = [];
+            Ext.Array.push(filters, this.callParent(arguments));
+            if (model.elementName === 'HierarchicalRequirement') {
+                if (this.context.getSubscription().StoryHierarchyEnabled) {
+                    filters.push({
+                        property: 'DirectChildrenCount',
+                        value: 0
+                    });
+                }
+            }
+
+            return filters;
+        }
+    });
+})();
+
+                (function() {
+    var Ext = window.Ext4 || window.Ext;
+
+    Ext.define('Rally.apps.kanban.EstimationApp', {
+        extend: 'Rally.app.App',
+        requires: [
+            'Rally.apps.kanban.Settings',
+            'Rally.apps.kanban.Column',
+            'Rally.ui.gridboard.GridBoard',
+            'Rally.ui.gridboard.plugin.GridBoardTagFilter',
+            'Rally.ui.gridboard.plugin.GridBoardArtifactTypeChooser',
+            'Rally.ui.gridboard.plugin.GridBoardFilterInfo',
+            'Rally.ui.cardboard.plugin.ColumnPolicy',
+            'Rally.ui.cardboard.PolicyContainer',
+            'Rally.ui.cardboard.CardBoard',
+            'Rally.ui.cardboard.plugin.Scrollable',
+            'Rally.ui.cardboard.plugin.FixedHeader',
+            'Rally.ui.report.StandardReport'
+        ],
+        cls: 'kanban',
+        alias: 'widget.kanbanapp',
+        appName: 'Kanban',
+
+        settingsScope: 'project',
+        useTimeboxScope: true,
+
+        config: {
+            defaultSettings: {
+                groupByField: 'ScheduleState',
+                columns: Ext.JSON.encode({
+                    Defined: {wip: ''},
+                    'In-Progress': {wip: ''},
+                    Completed: {wip: ''},
+                    Accepted: {wip: ''}
+                }),
+                cardFields: 'FormattedID,Name,Discussion', //remove with COLUMN_LEVEL_FIELD_PICKER_ON_KANBAN_SETTINGS
+                hideReleasedCards: false,
+                showCardAge: false,
+                cardAgeThreshold: 3,
+                pageSize: 25
+            }
+        },
+
+        launch: function() {
+            this.setLoading();
+            Rally.data.ModelFactory.getModel({
+                type: 'UserStory',
+                success: this._onStoryModelRetrieved,
+                scope: this
+            });
+        },
+
+        getOptions: function() {
+            return [
+                {
+                    text: 'Print',
+                    handler: this._print,
+                    scope: this
+                }
+            ];
+        },
+
+        getSettingsFields: function() {
+            return Rally.apps.kanban.Settings.getFields({
+                shouldShowColumnLevelFieldPicker: this._shouldShowColumnLevelFieldPicker(),
+                defaultCardFields: this.getSetting('cardFields'),
+                isDndWorkspace: false
+            });
+        },
+
+        /**
+         * Called when any timebox scope change is received.
+         * @protected
+         * @param {Rally.app.TimeboxScope} timeboxScope The new scope
+         */
+        onTimeboxScopeChange: function(timeboxScope) {
+            this.callParent(arguments);
+            this.gridboard.destroy();
+            this.launch();
+        },
+
+        _shouldShowColumnLevelFieldPicker: function() {
+            return false; //this.getContext().isFeatureEnabled('COLUMN_LEVEL_FIELD_PICKER_ON_KANBAN_SETTINGS');
+        },
+
+        _onStoryModelRetrieved: function(model) {
+            this.groupByField = model.getField(this.getSetting('groupByField'));
+            this._addCardboardContent();
+        },
+
+        _addCardboardContent: function() {
+            var cardboardConfig = this._getCardboardConfig();
+
+            var columnSetting = this._getColumnSetting();
+            if (columnSetting) {
+                cardboardConfig.columns = this._getColumnConfig(columnSetting);
+            }
+
+            this.gridboard = this.add(this._getGridboardConfig(cardboardConfig));
+//            this._addReferenceStories();
+            this.cardboard = this.gridboard.getGridOrBoard();
+        },
+
+        _getGridboardConfig: function(cardboardConfig) {
+            var plugins = [
+                {
+                    ptype: 'rallygridboardfilterinfo',
+                    isGloballyScoped: Ext.isEmpty(this.getSetting('project')) ? true : false,
+                    queryString: this.getSetting('query')
+                },
+                {
+                    ptype: 'rallygridboardartifacttypechooser',
+                    artifactTypePreferenceKey: 'artifact-types',
+                    showAgreements: true
+                },
+                'rallygridboardtagfilter'
+            ];
+
+            if (this.getContext().isFeatureEnabled('FILTER_BY_OWNER_ON_KANBAN_APP')) {
+                plugins.push({
+                    ptype: 'rallygridboardownerfilter',
+                    stateId: 'kanban-owner-filter-' + this.getAppId()
+                });
+            }
+            
+            return {
+                xtype: 'rallygridboard',
+                stateful: false,
+                toggleState: 'board',
+                cardBoardConfig: cardboardConfig,
+                plugins: plugins,
+                context: this.getContext(),
+                modelNames: this._getDefaultTypes()
+            };
+        },
+
+        _getColumnConfig: function(columnSetting) {
+            var columns = [];
+            Ext.Object.each(columnSetting, function(column, values) {
+                var columnConfig = {
+                    xtype: 'kanbancolumn',
+                    enableWipLimit: false,
+                    wipLimit: values.sizebucket,
+                    plugins: [{
+                        ptype: 'rallycolumnpolicy',
+                        app: this
+                    }],
+                    fields: this._getFieldsForColumn(values),
+                    value: column,
+                    columnHeaderConfig: {
+                        headerTpl: column || 'None'
+                    },
+                    cardLimit: this.getSetting('pageSize'),
+                    listeners: {
+                        invalidfilter: {
+                            fn: this._onInvalidFilter,
+                            scope: this
+                        }
+                    }
+                };
+                columns.push(columnConfig);
+            }, this);
+
+            columns[columns.length - 1].storeConfig = {
+                filters: this._getLastColumnFilter()
+            };
+
+            return columns;
+        },
+
+        _getFieldsForColumn: function(values) {
+            var columnFields = [];
+            if (this._shouldShowColumnLevelFieldPicker()) {
+                if (values.cardFields) {
+                    columnFields = values.cardFields.split(',');
+                } else if (this.getSetting('cardFields')) {
+                    columnFields = this.getSetting('cardFields').split(',');
+                }
+            }
+            return columnFields;
+        },
+
+        _onInvalidFilter: function() {
+            Rally.ui.notify.Notifier.showError({
+                message: 'Invalid query: ' + this.getSetting('query')
+            });
+        },
+
+        _getCardboardConfig: function() {
+            return {
+                xtype: 'rallycardboard',
+                plugins: [
+                    {ptype: 'rallycardboardprinting', pluginId: 'print'},
+                    {ptype: 'rallyfixedheadercardboard'},
+                    {
+                        ptype: 'rallyscrollablecardboard',
+                        containerEl: this.getEl()
+                    }
+                ],
+                types: this._getDefaultTypes(),
+                attribute: this.getSetting('groupByField'),
+                margin: '10px',
+                context: this.getContext(),
+                listeners: {
+                    beforecarddroppedsave: this._onBeforeCardSaved,
+                    load: this._onBoardLoad,
+                    filter: this._onBoardFilter,
+                    filtercomplete: this._onBoardFilterComplete,
+                    cardupdated: this._publishContentUpdatedNoDashboardLayout,
+                    scope: this
+                },
+                columnConfig: {
+                    xtype: 'rallycardboardcolumn',
+                    enableWipLimit: false
+                },
+                cardConfig: {
+                    editable: true,
+                    showIconMenus: true,
+                    fields: (this._shouldShowColumnLevelFieldPicker()) ? [] : this.getSetting('cardFields').split(','),
+                    showAge: -1,
+                    draggable: false,
+                    floating: false,
+                    showBlockedReason: true
+                },
+                loadMask: false,
+                storeConfig: {
+                    context: this.getContext().getDataContext(),
+                    pageSize: this.getSetting('pageSize'),
+                    filters: this.getSetting('query') ?
+                        [Rally.data.QueryFilter.fromQueryString(this.getSetting('query'))] : []
+                }
+            };
+        },
+
+        _getLastColumnFilter: function() {
+            return  [];
+        },
+
+        _getColumnSetting: function() {
+            var columnSetting = this.getSetting('columns');
+            return columnSetting && Ext.JSON.decode(columnSetting);
+        },
+
+        _buildReportConfig: function(report) {
+            var shownTypes = this._getShownTypes();
+            var workItems = shownTypes.length === 2 ? 'N' : shownTypes[0].workItemType;
+
+            var reportConfig = {
+                report: report,
+                work_items: workItems
+            };
+            if (this.getSetting('groupByField') !== 'ScheduleState') {
+                reportConfig.filter_field = this.groupByField.displayName;
+            }
+            return reportConfig;
+        },
+
+        _showCycleTimeReport: function() {
+            this._showReportDialog('Cycle Time Report',
+                this._buildReportConfig(Rally.ui.report.StandardReport.Reports.CycleLeadTime));
+        },
+
+        _showThroughputReport: function() {
+            this._showReportDialog('Throughput Report',
+                this._buildReportConfig(Rally.ui.report.StandardReport.Reports.Throughput));
+        },
+
+        _print: function() {
+            this.cardboard.openPrintPage({title: 'Kanban Board'});
+        },
+        _getShownTypes: function() {
+            return this.gridboard.artifactTypeChooserPlugin.getChosenTypesConfig();
+        },
+
+        _getDefaultTypes: function() {
+            return ['User Story', 'Defect'];
+        },
+        _buildStandardReportConfig: function(reportConfig) {
+            var scope = this.getContext().getDataContext();
+            return {
+                xtype: 'rallystandardreport',
+                padding: 10,
+                project: scope.project,
+                projectScopeUp: scope.projectScopeUp,
+                projectScopeDown: scope.projectScopeDown,
+                reportConfig: reportConfig
+            };
+        },
+
+        _showReportDialog: function(title, reportConfig) {
+            var height = 450, width = 600;
+            this.getEl().mask();
+            Ext.create('Rally.ui.dialog.Dialog', {
+                title: title,
+                autoShow: true,
+                draggable: false,
+                closable: true,
+                modal: false,
+                height: height,
+                width: width,
+                items: [
+                    Ext.apply(this._buildStandardReportConfig(reportConfig),
+                        {
+                            height: height,
+                            width: width
+                        })
+                ],
+                listeners: {
+                    close: function() {
+                        this.getEl().unmask();
+                    },
+                    scope: this
+                }
+            });
+        },
+
+        _onBoardLoad: function() {
+            this._publishContentUpdated();
+            this.setLoading(false);
+            this._initializeChosenTypes();
+        },
+
+        _onBoardFilter: function() {
+            this.setLoading(true);
+        },
+
+        _onBoardFilterComplete: function() {
+            this.setLoading(false);
+        },
+
+        _initializeChosenTypes: function() {
+            var artifactsPref = this.gridboard.artifactTypeChooserPlugin.artifactsPref;
+            var allowedArtifacts = this.gridboard.getHeader().getRight().query('checkboxfield');
+            if (!Ext.isEmpty(artifactsPref) && artifactsPref.length !== allowedArtifacts.length) {
+                this.gridboard.getGridOrBoard().addLocalFilter('ByType', artifactsPref, false);
+            }
+        },
+
+
+        _publishContentUpdated: function() {
+            this.fireEvent('contentupdated');
+            if (Rally.BrowserTest) {
+                Rally.BrowserTest.publishComponentReady(this);
+            }
+        },
+
+        _publishContentUpdatedNoDashboardLayout: function() {
+            this.fireEvent('contentupdated', {dashboardLayout: false});
+        },
+
+        _onBeforeCardSaved: function(column, card, type) {
+            var columnSetting = this._getColumnSetting();
+            if (columnSetting) {
+                var setting = columnSetting[column.getValue()];
+                if (setting && setting.sizebucket) {
+                    console.log("Setting: ", setting.sizebucket);
+                    card.getRecord().set('PlanEstimate', setting.sizebucket);
+                }
+            }
+        },
+        
+        _addReferenceStories:function() {
+            var cardboardConfig = Ext.clone(this._getCardboardConfig());
+            cardboardConfig.itemId = 'cardboard';
+            cardboardConfig.plugins = [];
+            var query = Ext.create('Rally.data.QueryFilter', {
+                property: 'SizeReference',
+                value: true
+            });            
+            cardboardConfig.storeConfig.filters.push(query);
+            var row = {
+                    items:[cardboardConfig]
+
+            };
+            this.add(row);
+        }
+        
+    });
+})();
+
+
+            Rally.launchApp('Rally.apps.kanban.KanbanApp', {
+                name:"Estimation Board",
+	            parentRepos:""
+            });
+
+        });
+    </script>
+
+
+    <style type="text/css">
+        /* needed for fixed header plugin*/
+.kanban {
+    height: 100%;
+    overflow-y: hidden !important;
+}
+
+.kanban .rui-gridboard {
+    height: 100%;
+}
+/* end needed for fixed header plugin*/
+
+.ext-ie .kanban .right .filterInfo {
+    width: 25px;
+}
+
+.ext-ie .kanban .right .artifact-type-chooser {
+    width: 265px;
+}
+
+.cardboard .status-content > .status-field.RevisionHistory {
+    line-height: 18px;
+    cursor: default;
+}
+
+.column-settings .settings-grid {
+    border: 1px solid #FFF;
+}
+
+.column-settings .settings-grid.rally-invalid-field {
+    border: 1px solid #F00;
+}
+
+.rui-picker-right-action {
+  display: inline;
+  float: right;
+  padding-right: 4px;
+}
+    </style>
+</head>
+<body></body>
+</html>

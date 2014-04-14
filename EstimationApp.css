@@ -1,0 +1,37 @@
+/* needed for fixed header plugin*/
+.kanban {
+    height: 100%;
+    overflow-y: hidden !important;
+}
+
+.kanban .rui-gridboard {
+    height: 100%;
+}
+/* end needed for fixed header plugin*/
+
+.ext-ie .kanban .right .filterInfo {
+    width: 25px;
+}
+
+.ext-ie .kanban .right .artifact-type-chooser {
+    width: 265px;
+}
+
+.cardboard .status-content > .status-field.RevisionHistory {
+    line-height: 18px;
+    cursor: default;
+}
+
+.column-settings .settings-grid {
+    border: 1px solid #FFF;
+}
+
+.column-settings .settings-grid.rally-invalid-field {
+    border: 1px solid #F00;
+}
+
+.rui-picker-right-action {
+  display: inline;
+  float: right;
+  padding-right: 4px;
+}
