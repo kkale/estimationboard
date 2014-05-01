@@ -107,7 +107,7 @@
                     text: 'Size',
                     dataIndex: 'sizebucket',
                     flex: 1,
-                    emptyCellText: '&#8734;',
+                    emptyCellText: '--',
                     editor: {
                         xtype: 'rallytextfield',
                         maskRe: /[0-9]/,

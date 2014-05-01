@@ -99,6 +99,11 @@
                     validateOnBlur: false
                 },
                 {
+                    name: 'referenceTag',
+                    xtype: 'rallytextfield',
+                    fieldLabel: 'Reference Story Tag'
+                },
+                {
                     type: 'query'
                 }
             );
