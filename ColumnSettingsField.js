@@ -268,7 +268,6 @@
             };
 
             if (pref) {
-            	console.log("pref: ", pref);
                 Ext.apply(column, {
                     shown: true,
                     sizebucket: pref.sizebucket,

@@ -96,12 +96,16 @@
 
         _onStoryModelRetrieved: function(model) {
             this.groupByField = model.getField(this.getSetting('groupByField'));
-            this.commonCardboardConfig = this._getCardboardAndColumnConfig();            
-            this._addReferenceStories(this.commonCardboardConfig);            
+            this.commonCardboardConfig = this._getCardboardAndColumnConfig();
+            var useRefWall = this.getSetting("usereferencewall");
+            console.log("useRefWall: ", useRefWall);
+            if (useRefWall) {
+                this._addReferenceStoryWall(this.commonCardboardConfig);                    	
+            }
             this._addCardboardContent(this.commonCardboardConfig);
         },
 
-        _addReferenceStories:function(mycardboardconfig) {
+        _addReferenceStoryWall:function(mycardboardconfig) {
             var cardboardConfig = Ext.clone(mycardboardconfig);
             cardboardConfig.itemId = 'cardboard';
             cardboardConfig.plugins = [];
@@ -130,8 +134,18 @@
                 disabled: false
             };
             
+            var button = {
+                    xtype:"rallycheckboxfield",
+                    fieldLabel: "Show Reference Wall",
+                    value: true,
+                    handler: function(checkbox, checked) {
+                        var card = this.up('.container').down('#cardboard');
+                        card.setVisible(checked);
+                    }
+                };
+
             var row = {
-                    items:[cardboardConfig]
+                    items:[button, cardboardConfig]
 
             };
             
@@ -155,7 +169,7 @@
                 {
                     ptype: 'rallygridboardartifacttypechooser',
                     artifactTypePreferenceKey: 'artifact-types',
-                    showAgreements: true
+                    showAgreements: false
                 },
                 'rallygridboardtagfilter'
             ];
@@ -359,7 +373,8 @@
             var columnSetting = this._getColumnSetting();
             if (columnSetting) {
                 var setting = columnSetting[column.getValue()];
-                if (setting && setting.sizebucket) {
+                console.log("size bucket: ", setting.sizebucket);
+                if (setting ) {
                     card.getRecord().set('PlanEstimate', setting.sizebucket);
                 }
             }

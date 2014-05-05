@@ -99,6 +99,12 @@
                     validateOnBlur: false
                 },
                 {
+                    name: 'usereferencewall',
+                    xtype: 'rallycheckboxfield',
+                    fieldLabel: 'Use Reference Story Wall'
+                    
+                },
+                {
                     name: 'referenceTag',
                     xtype: 'rallytextfield',
                     fieldLabel: 'Reference Story Tag'
