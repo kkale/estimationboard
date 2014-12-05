@@ -77,7 +77,7 @@
                 {
                     text: 'Column',
                     dataIndex: 'column',
-                    emptyCellText: 'None',
+                    emptyCellText: '--',
                     flex: 2
                 },
                 {
